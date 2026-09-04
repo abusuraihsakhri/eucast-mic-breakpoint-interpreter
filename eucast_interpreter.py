@@ -12,8 +12,25 @@ import argparse
 import csv
 import json
 import math
+import os
 import sys
 from typing import Dict, Any, List, Optional
+
+
+def _validate_safe_path(path: str, must_exist: bool = False) -> str:
+    """Validate that a file path is safe (no path traversal) and optionally exists."""
+    # Reject paths with null bytes
+    if '\x00' in path:
+        raise ValueError(f"Invalid path: contains null bytes")
+    # Normalize and resolve to absolute
+    normalized = os.path.normpath(os.path.abspath(path))
+    # Reject path traversal attempts (check both separators for cross-platform safety)
+    path_parts = path.replace('\\', '/').split('/')
+    if '..' in path_parts:
+        raise ValueError(f"Path traversal detected in: {path}")
+    if must_exist and not os.path.isfile(normalized):
+        raise FileNotFoundError(f"Input file not found: {path}")
+    return normalized
 
 
 def calculate_metrics(**kwargs) -> Dict[str, Any]:
@@ -66,10 +83,17 @@ def process_single(args) -> None:
 
 
 def process_batch(input_csv: str, output_csv: str) -> None:
-    with open(input_csv, mode="r", encoding="utf-8-sig") as f:
+    # Validate paths to prevent path traversal
+    safe_input = _validate_safe_path(input_csv, must_exist=True)
+    safe_output = _validate_safe_path(output_csv, must_exist=False)
+
+    with open(safe_input, mode="r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         fieldnames = list(reader.fieldnames or [])
         rows = list(reader)
+
+    if not fieldnames:
+        raise ValueError(f"CSV file has no headers: {input_csv}")
 
     out_fields = fieldnames + ["score", "classification", "clinical_recommendation"]
     out_rows = []
@@ -82,7 +106,7 @@ def process_batch(input_csv: str, output_csv: str) -> None:
         row_dict["clinical_recommendation"] = calc_res["clinical_recommendation"]
         out_rows.append(row_dict)
 
-    with open(output_csv, mode="w", encoding="utf-8", newline="") as f:
+    with open(safe_output, mode="w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=out_fields)
         writer.writeheader()
         writer.writerows(out_rows)
