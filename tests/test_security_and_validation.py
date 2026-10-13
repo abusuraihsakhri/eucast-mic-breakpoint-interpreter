@@ -93,21 +93,14 @@ class TestPHIGuard:
 
 
 class TestCalculateMetricsValidation:
-    """Tests for calculate_metrics edge cases."""
+    """The old generic score must not be treated as susceptibility."""
 
-    def test_no_numeric_values_defaults(self):
-        result = calculate_metrics(name="test", label="abc")
-        assert result["score"] == 1.0  # Default when no numeric values
+    def test_explicit_breakpoints_required(self):
+        with pytest.raises(TypeError):
+            calculate_metrics(v1=30, v2=5)
 
-    def test_single_numeric_value(self):
-        result = calculate_metrics(v1=15.0)
-        assert result["score"] == 15.0
-        assert result["classification"] == "Moderate / Intermediate"
-
-    def test_high_classification(self):
-        result = calculate_metrics(v1=30.0, v2=10.0, v3=5.0)
-        assert result["classification"] == "High / Severe"
-
-    def test_low_classification(self):
-        result = calculate_metrics(v1=5.0)
-        assert result["classification"] == "Low / Standard"
+    def test_susceptibility_category(self):
+        result = calculate_metrics(
+            organism="Demo organism", antimicrobial="Demo drug",
+            mic="4", s_le="1", r_gt="8", breakpoint_version="illustrative")
+        assert result["classification"] == "I"
