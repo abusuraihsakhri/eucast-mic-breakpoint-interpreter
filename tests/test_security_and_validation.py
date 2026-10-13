@@ -104,3 +104,18 @@ class TestCalculateMetricsValidation:
             organism="Demo organism", antimicrobial="Demo drug",
             mic="4", s_le="1", r_gt="8", breakpoint_version="illustrative")
         assert result["classification"] == "I"
+
+
+def test_audit_detects_modified_signature():
+    trail = AuditTrail(secret_key="unit-test-only-key")
+    event = trail.log("test", "test", "unit-test", {"status": "ok"})
+    assert trail.verify_integrity()
+    event["current_hash"] = "0" * 64
+    assert not trail.verify_integrity()
+
+
+def test_audit_detects_modified_signed_metadata():
+    trail = AuditTrail(secret_key="unit-test-only-key")
+    trail.log("test", "test", "unit-test", {"status": "ok"})
+    trail.logs[0]["actor"] = "modified"
+    assert not trail.verify_integrity()
