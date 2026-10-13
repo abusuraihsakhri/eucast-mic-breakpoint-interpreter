@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eucast-mic-breakpoint-interpreter"
-version = "3.0.0"
+version = "3.1.0"
 description = "EUCAST / CLSI Antimicrobial MIC Breakpoint Interpreter"
 readme = "README.md"
 license = {text = "MIT"}
@@ -35,6 +35,9 @@ test = [
 
 [project.scripts]
 eucast-interpreter = "cli:main"
+
+[tool.setuptools]
+py-modules = ["cli", "eucast_interpreter", "enrichment", "simulator"]
 
 [tool.setuptools.packages.find]
 include = ["agents*"]

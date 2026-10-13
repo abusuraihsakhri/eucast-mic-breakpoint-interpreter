@@ -1,142 +1,181 @@
 #!/usr/bin/env python3
-"""
-EUCAST / CLSI Antimicrobial MIC Breakpoint Interpreter
-Classifies Minimum Inhibitory Concentration (MIC) into Susceptible (S), Intermediate/Susceptible Increased Exposure (I), Resistant (R).
+"""Conservative MIC categorisation using explicitly supplied EUCAST breakpoints.
 
-Zero-dependency Python implementation with single and batch evaluation.
-Author: Dr. Abu Suraih Sakhri
-License: MIT
+No clinical breakpoint table is bundled. The caller must confirm the species,
+agent, dosing context, notes, and exact breakpoint table edition.
 """
 
 import argparse
 import csv
+from decimal import Decimal, InvalidOperation
 import json
-import math
 import os
+import re
 import sys
-from typing import Dict, Any, List, Optional
+import tempfile
+
+MIC_PATTERN = re.compile(r"^\s*(<=|>=|<|>)?\s*(\d+(?:\.\d+)?|\.\d+)\s*$")
+FIELDS = ("organism", "antimicrobial", "mic", "s_le", "r_gt", "breakpoint_version")
+OPTIONAL = ("atu_low", "atu_high")
 
 
-def _validate_safe_path(path: str, must_exist: bool = False) -> str:
-    """Validate that a file path is safe (no path traversal) and optionally exists."""
-    # Reject paths with null bytes
-    if '\x00' in path:
-        raise ValueError(f"Invalid path: contains null bytes")
-    # Normalize and resolve to absolute
-    normalized = os.path.normpath(os.path.abspath(path))
-    # Reject path traversal attempts (check both separators for cross-platform safety)
-    path_parts = path.replace('\\', '/').split('/')
-    if '..' in path_parts:
-        raise ValueError(f"Path traversal detected in: {path}")
-    if must_exist and not os.path.isfile(normalized):
+def _validate_safe_path(path, must_exist=False):
+    if "\x00" in path:
+        raise ValueError("Invalid path: contains null bytes")
+    if ".." in path.replace("\\", "/").split("/"):
+        raise ValueError("Path traversal detected")
+    resolved = os.path.abspath(path)
+    if must_exist and not os.path.isfile(resolved):
         raise FileNotFoundError(f"Input file not found: {path}")
-    return normalized
+    return resolved
 
 
-def calculate_metrics(**kwargs) -> Dict[str, Any]:
+def _number(value, name):
+    try:
+        number = Decimal(str(value).strip())
+    except (InvalidOperation, ValueError, TypeError):
+        raise ValueError(f"{name} must be a finite nonnegative number") from None
+    if not number.is_finite() or number < 0:
+        raise ValueError(f"{name} must be a finite nonnegative number")
+    return number
+
+
+def _mic_interval(value):
+    match = MIC_PATTERN.fullmatch(str(value))
+    if match is None:
+        raise ValueError("MIC must be a number or a qualified value such as <=0.25 or >8")
+    op, raw = match.groups()
+    amount = _number(raw, "MIC")
+    if amount <= 0:
+        raise ValueError("MIC must be greater than zero")
+    if op == "<":
+        return (None, False, amount, False)
+    if op == "<=":
+        return (None, False, amount, True)
+    if op == ">":
+        return (amount, False, None, False)
+    if op == ">=":
+        return (amount, True, None, False)
+    return (amount, True, amount, True)
+
+
+def interpret_mic(*, organism, antimicrobial, mic, s_le, r_gt,
+                  breakpoint_version, atu_low=None, atu_high=None):
+    """Return S, I, R, ATU, or UNDETERMINED without inventing breakpoints.
+
+    S: MIC <= s_le; I: s_le < MIC <= r_gt; R: MIC > r_gt.
+    Qualified MICs receive a category only if all possible values agree.
+    An interval overlapping a supplied ATU is flagged instead of categorised.
     """
-    Core domain algorithm for eucast-mic-breakpoint-interpreter.
-    """
-    params = {}
-    for k, v in kwargs.items():
-        if v is not None:
-            try:
-                params[k] = float(v)
-            except (ValueError, TypeError):
-                params[k] = str(v)
+    for label, value in (("organism", organism), ("antimicrobial", antimicrobial),
+                         ("breakpoint_version", breakpoint_version)):
+        if not isinstance(value, str) or not value.strip() or len(value) > 160:
+            raise ValueError(f"{label} is required (max 160 characters)")
+    s, r = _number(s_le, "s_le"), _number(r_gt, "r_gt")
+    if s > r:
+        raise ValueError("s_le must not exceed r_gt")
+    low, low_inc, high, high_inc = _mic_interval(mic)
+    if (atu_low is None or str(atu_low).strip() == "") != (atu_high is None or str(atu_high).strip() == ""):
+        raise ValueError("Specify both atu_low and atu_high, or neither")
 
-    # Deterministic domain logic
-    numeric_vals = [val for val in params.values() if isinstance(val, (int, float))]
-    primary_val = numeric_vals[0] if numeric_vals else 1.0
-
-    score = primary_val
-    for idx, nv in enumerate(numeric_vals[1:], start=2):
-        score += nv * (1.0 / idx)
-
-    rounded_score = round(score, 2)
-    
-    # Classification / tiering
-    if rounded_score < 10.0:
-        tier = "Low / Standard"
-        action = "Standard monitoring or negative cutoff"
-    elif rounded_score < 25.0:
-        tier = "Moderate / Intermediate"
-        action = "Close observation or secondary evaluation"
-    else:
-        tier = "High / Severe"
-        action = "Urgent clinical intervention or primary positive finding"
+    category = "UNDETERMINED"
+    reason = "The MIC reporting interval crosses a category boundary"
+    if atu_low is not None and str(atu_low).strip() != "":
+        a, b = _number(atu_low, "atu_low"), _number(atu_high, "atu_high")
+        if a > b:
+            raise ValueError("atu_low must not exceed atu_high")
+        below = high is not None and (high < a or (high == a and not high_inc))
+        above = low is not None and (low > b or (low == b and not low_inc))
+        if not (below or above):
+            category = "ATU"
+            reason = "MIC interval overlaps the specified Area of Technical Uncertainty; manual review required"
+    if category != "ATU":
+        if high is not None and high <= s:
+            category, reason = "S", "MIC is within the supplied S threshold (standard dosing regimen)"
+        elif low is not None and (low > r or (low == r and not low_inc)):
+            category, reason = "R", "MIC exceeds the supplied R threshold"
+        elif (low is not None and (low > s or (low == s and not low_inc))
+              and high is not None and high <= r):
+            category, reason = "I", "MIC is between S and R thresholds (increased exposure)"
 
     return {
-        "tool": "eucast-mic-breakpoint-interpreter",
-        "score": rounded_score,
-        "classification": tier,
-        "clinical_recommendation": action,
-        "inputs_evaluated": len(params),
+        "organism": organism.strip(), "antimicrobial": antimicrobial.strip(),
+        "mic": str(mic).strip(), "s_le": str(s), "r_gt": str(r),
+        "breakpoint_version": breakpoint_version.strip(),
+        "classification": category, "reason": reason,
+        "atu_low": str(_number(atu_low, "atu_low")) if atu_low is not None and str(atu_low).strip() else "",
+        "atu_high": str(_number(atu_high, "atu_high")) if atu_high is not None and str(atu_high).strip() else "",
     }
 
 
-def process_single(args) -> None:
-    kwargs = vars(args)
-    kwargs.pop("func", None)
-    res = calculate_metrics(**kwargs)
-    print(json.dumps(res, indent=2))
+def calculate_metrics(**kwargs):
+    """Compatibility entry point: unlike the previous weighted-score placeholder, requires MIC fields."""
+    return interpret_mic(**kwargs)
 
 
-def process_batch(input_csv: str, output_csv: str) -> None:
-    # Validate paths to prevent path traversal
-    safe_input = _validate_safe_path(input_csv, must_exist=True)
-    safe_output = _validate_safe_path(output_csv, must_exist=False)
+def _csv_safe(value):
+    text = str(value)
+    return "'" + text if text.lstrip().startswith(("=", "+", "-", "@", "\t", "\r")) else text
 
-    with open(safe_input, mode="r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        fieldnames = list(reader.fieldnames or [])
-        rows = list(reader)
 
-    if not fieldnames:
-        raise ValueError(f"CSV file has no headers: {input_csv}")
-
-    out_fields = fieldnames + ["score", "classification", "clinical_recommendation"]
-    out_rows = []
-
-    for r in rows:
-        calc_res = calculate_metrics(**r)
-        row_dict = dict(r)
-        row_dict["score"] = calc_res["score"]
-        row_dict["classification"] = calc_res["classification"]
-        row_dict["clinical_recommendation"] = calc_res["clinical_recommendation"]
-        out_rows.append(row_dict)
-
-    with open(safe_output, mode="w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=out_fields)
-        writer.writeheader()
-        writer.writerows(out_rows)
-
-    print(f"Processed {len(out_rows)} records -> {output_csv}")
+def process_batch(input_csv, output_csv):
+    source = _validate_safe_path(input_csv, must_exist=True)
+    destination = _validate_safe_path(output_csv)
+    if os.path.samefile(source, destination) if os.path.exists(destination) else source == destination:
+        raise ValueError("Input and output files must differ")
+    if os.path.getsize(source) > 10 * 1024 * 1024:
+        raise ValueError("CSV input exceeds 10 MiB limit")
+    results = []
+    with open(source, newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or any(field not in reader.fieldnames for field in FIELDS):
+            raise ValueError("CSV requires headers: " + ", ".join(FIELDS))
+        for index, row in enumerate(reader, start=1):
+            if index > 50000:
+                raise ValueError("CSV exceeds 50000-row limit")
+            try:
+                if None in row:
+                    raise ValueError("Unexpected extra CSV columns")
+                result = interpret_mic(**{field: row.get(field) for field in FIELDS + OPTIONAL})
+            except (ValueError, TypeError) as exc:
+                result = {field: row.get(field, "") for field in FIELDS + OPTIONAL}
+                result.update(classification="INVALID", reason=str(exc))
+            results.append({"row": index, **{key: _csv_safe(result.get(key, "")) for key in FIELDS + OPTIONAL + ("classification", "reason")}})
+    headers = ("row",) + FIELDS + OPTIONAL + ("classification", "reason")
+    fd, temporary = tempfile.mkstemp(prefix=".mic-", suffix=".csv", dir=os.path.dirname(destination) or ".")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as handle:
+            writer = csv.DictWriter(handle, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(results)
+        os.replace(temporary, destination)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return len(results)
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="EUCAST / CLSI Antimicrobial MIC Breakpoint Interpreter")
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    # Single parser
-    single_parser = subparsers.add_parser("single", help="Evaluate single case")
-    single_parser.add_argument("--v1", type=float, default=10.0, help="Primary parameter")
-    single_parser.add_argument("--v2", type=float, default=5.0, help="Secondary parameter")
-    single_parser.add_argument("--v3", type=float, default=2.0, help="Tertiary parameter")
-    single_parser.set_defaults(func=process_single)
-
-    # Batch parser
-    batch_parser = subparsers.add_parser("batch", help="Process batch CSV")
-    batch_parser.add_argument("-i", "--input", required=True, help="Input CSV")
-    batch_parser.add_argument("-o", "--output", default="results.csv", help="Output CSV")
-
+    parser = argparse.ArgumentParser(description="EUCAST MIC breakpoint interpreter (user-supplied thresholds)")
+    commands = parser.add_subparsers(dest="command", required=True)
+    single = commands.add_parser("single", help="Interpret one MIC")
+    for field in FIELDS:
+        single.add_argument("--" + field.replace("_", "-"), required=True)
+    for field in OPTIONAL:
+        single.add_argument("--" + field.replace("_", "-"))
+    batch = commands.add_parser("batch", help="Interpret CSV using explicit per-row breakpoints")
+    batch.add_argument("-i", "--input", required=True)
+    batch.add_argument("-o", "--output", default="results.csv")
     args = parser.parse_args(argv)
-
-    if args.command == "single":
-        args.func(args)
-    elif args.command == "batch":
-        process_batch(args.input, args.output)
+    try:
+        if args.command == "single":
+            print(json.dumps(interpret_mic(**{name: getattr(args, name) for name in FIELDS + OPTIONAL}), indent=2))
+        else:
+            print(f"Processed {process_batch(args.input, args.output)} rows -> {args.output}")
+    except (ValueError, FileNotFoundError, OSError) as exc:
+        parser.exit(2, f"Error: {exc}\n")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

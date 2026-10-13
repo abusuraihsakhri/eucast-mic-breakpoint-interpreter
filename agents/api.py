@@ -4,6 +4,7 @@ FastAPI REST API Server for Eucast Mic Breakpoint Interpreter.
 from typing import Dict, Any, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from eucast_interpreter import interpret_mic
 from .base import AuditLogger, PHIGuard
 from .models import SystemTaskPayload, ConsensusDossier
 from .supervisor import SystemSupervisor
@@ -12,8 +13,8 @@ supervisor = SystemSupervisor(model_provider="mock")
 
 app = FastAPI(
     title="Eucast Mic Breakpoint Interpreter API",
-    description="Enterprise Distributed Component Platform (Clinical & Biomedical AI)",
-    version="3.0.0-ENTERPRISE",
+    description="EUCAST MIC evaluation with explicit breakpoints; auxiliary nonclinical audit prototype",
+    version="3.1.0",
 )
 
 
@@ -21,9 +22,28 @@ class ChatRequest(BaseModel):
     query: str
 
 
+class MICRequest(BaseModel):
+    organism: str
+    antimicrobial: str
+    mic: str
+    s_le: str
+    r_gt: str
+    breakpoint_version: str
+    atu_low: str | None = None
+    atu_high: str | None = None
+
+
+@app.post("/api/interpret")
+def api_interpret(payload: MICRequest):
+    try:
+        return interpret_mic(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @app.get("/health")
 def health():
-    return {"status": "HEALTHY", "service": "eucast-mic-breakpoint-interpreter", "domain": "Clinical & Biomedical AI", "standard": "CAP / CLSI / ISO Standards", "version": "3.0.0-ENTERPRISE"}
+    return {"status": "HEALTHY", "service": "eucast-mic-breakpoint-interpreter", "domain": "MIC interpretation and auxiliary audit", "version": "3.1.0"}
 
 
 @app.get("/metrics")

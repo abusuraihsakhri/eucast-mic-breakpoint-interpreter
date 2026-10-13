@@ -6,7 +6,7 @@ Standard: CAP / CLSI / ISO Standards
 import datetime
 from enum import Enum
 from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class UrgencyLevel(str, Enum):
@@ -22,8 +22,9 @@ class SystemIntegrityStatus(str, Enum):
 
 
 class SystemTaskPayload(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     task_id: str = Field(..., description="Unique task / case identifier")
-    target_identifier: str = Field(..., description="Entity, patient key, or genomic/cryptographic target")
+    target_identifier: str = Field(..., description="Synthetic nonclinical target identifier")
     primary_metric: float = Field(..., description="Primary domain measurement or score")
     secondary_metric: float = Field(default=0.0, description="Secondary kinetic or confidence score")
     status_descriptor: str = Field(default="NOMINAL", description="Status code or phenotype descriptor")
@@ -39,7 +40,7 @@ class AgentAlert(BaseModel):
     summary: str
     technical_details: str
     actionable_remediation: str
-    standard_reference: str = "CAP / CLSI / ISO Standards"
+    standard_reference: str = "Illustrative prototype heuristics, not clinical standards"
     timestamp: str = Field(default_factory=lambda: datetime.datetime.now(datetime.timezone.utc).isoformat())
 
     def to_dict(self) -> Dict[str, Any]:
