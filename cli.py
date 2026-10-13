@@ -76,8 +76,8 @@ def main(argv=None):
         )
         dossier = supervisor.process_task(payload)
         print("=" * 80)
-        print(f"  EUCAST MIC BREAKPOINT INTERPRETER")
-        print(f"  Domain: Clinical & Biomedical AI | Standard: CAP / CLSI / ISO Standards")
+        print(f"  AUXILIARY NUMERIC AUDIT (NOT EUCAST SUSCEPTIBILITY INTERPRETATION)")
+        print(f"  Threshold alerts below are generic test heuristics, not clinical standards")
         print(f"  Dossier ID: {dossier.dossier_id} | Urgency: [{dossier.overall_urgency.value}]")
         print("=" * 80)
         for a in dossier.alerts:
