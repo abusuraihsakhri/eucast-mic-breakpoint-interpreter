@@ -1,11 +1,11 @@
 {
-  "suite_name": "Eucast Mic Breakpoint Interpreter Golden Benchmark Test Suite",
+  "suite_name": "Auxiliary numeric audit prototype benchmark (NOT EUCAST AST)",
   "system_slug": "eucast-mic-breakpoint-interpreter",
-  "standard_reference": "CAP / CLSI / NIST Standards",
+  "standard_reference": "Prototype heuristic only",
   "test_cases": [
     {
       "case_id": "BENCH-01-NOMINAL",
-      "description": "Standard nominal flow with parameter values within normal physiological / cryptographic range.",
+      "description": "Standard nominal flow with parameter values within arbitrary illustrative numeric range.",
       "payload": {
         "task_id": "TASK-BENCH-01",
         "target_identifier": "TARGET-CALIB-OK",
@@ -37,7 +37,7 @@
       "payload": {
         "task_id": "TASK-BENCH-03",
         "target_identifier": "TARGET-CRITICAL-03",
-        "primary_metric": 18.0,
+        "primary_metric": 18,
         "secondary_metric": 19.5,
         "status_descriptor": "DISCORDANT_ANOMALY",
         "is_critical_flag": true
