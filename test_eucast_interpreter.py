@@ -1,21 +1,23 @@
-import pytest
+import csv
 from eucast_interpreter import calculate_metrics, process_batch
 
 
-def test_eucast_interpreter_single():
-    res = calculate_metrics(v1=12.0, v2=4.0)
-    assert "score" in res
-    assert "classification" in res
-    assert res["score"] > 0
+def test_interpret_single():
+    result = calculate_metrics(
+        organism="Demo organism", antimicrobial="Demo agent",
+        mic="2", s_le="1", r_gt="8", breakpoint_version="illustrative")
+    assert result["classification"] == "I"
 
 
-def test_eucast_interpreter_batch(tmp_path):
-    csv_in = tmp_path / "in.csv"
-    csv_out = tmp_path / "out.csv"
-    csv_in.write_text("Patient,v1,v2\nPat_001,15.0,3.0\nPat_002,5.0,1.0\n", encoding="utf-8")
-    
-    process_batch(str(csv_in), str(csv_out))
-    assert csv_out.exists()
-    content = csv_out.read_text(encoding="utf-8")
-    assert "Pat_001" in content
-    assert "score" in content
+def test_interpret_batch(tmp_path):
+    incoming = tmp_path / "in.csv"
+    outgoing = tmp_path / "out.csv"
+    incoming.write_text(
+        "organism,antimicrobial,mic,s_le,r_gt,breakpoint_version\n"
+        "Demo organism,Demo agent,1,1,8,illustrative\n",
+        encoding="utf-8",
+    )
+    assert process_batch(str(incoming), str(outgoing)) == 1
+    with outgoing.open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    assert rows[0]["classification"] == "S"
