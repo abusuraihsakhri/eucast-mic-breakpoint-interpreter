@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>EUCAST MIC breakpoint interpreter</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color-scheme:dark;background:#0c1320;color:#e8eef8}
+*{box-sizing:border-box}body{margin:0;line-height:1.5}.wrap{max-width:1020px;margin:auto;padding:24px 20px 60px}
+a{color:#97c5ff}header{display:flex;justify-content:space-between;gap:16px;align-items:start;margin-bottom:22px}
+h1{font-size:clamp(1.5rem,3vw,2.2rem);line-height:1.15;margin:0 0 10px}p{margin:0 0 12px;color:#b7c5d9}.eyebrow{color:#7db4fc;font-size:.78rem;text-transform:uppercase;font-weight:700;letter-spacing:.1em;margin-bottom:10px}
+.panel{background:#151f30;border:1px solid #33465d;border-radius:14px;padding:24px;margin-bottom:18px}.cols{display:grid;grid-template-columns:1.35fr 1fr;gap:18px}
+h2{font-size:1.08rem;margin:0 0 18px}h3{font-size:.95rem;margin:20px 0 8px}label{display:block;font-weight:600;font-size:.86rem;margin-bottom:6px}
+input{font:inherit;min-height:43px;width:100%;background:#0d1726;color:#f7faff;border:1px solid #61748e;border-radius:7px;padding:9px 11px}input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #80bdff;outline-offset:2px}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.field{margin-bottom:13px}.help{display:block;font-size:.77rem;color:#abbad0;margin-top:5px}
+button{font:inherit;border:0;border-radius:8px;padding:11px 16px;cursor:pointer;font-weight:700;background:#62a5f9;color:#091323}button:hover{background:#8bbfff}button.secondary{background:#2b3b51;color:#e9f1fb;border:1px solid #62728a}button:disabled{opacity:.45;cursor:not-allowed}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.state{border-radius:10px;padding:18px;border:1px dashed #73849b;min-height:160px}.category{font-size:2.2rem;font-weight:800;letter-spacing:.02em;line-height:1.2}.note{font-size:.88rem;color:#b7c5d9}
+#result[data-category="S"]{border-color:#55bc92}#result[data-category="I"]{border-color:#e4bd69}#result[data-category="R"],#result[data-category="ATU"]{border-color:#e4a085}#result[data-category="UNDETERMINED"]{border-color:#9ea9bf}
+.meta{margin-top:14px;font-size:.84rem;overflow-wrap:anywhere}.meta div{margin-bottom:7px}.meta strong{color:#eef4fb}
+.notice{border-left:3px solid #e4bd69;padding:9px 14px;background:#202b3a;margin-top:12px;color:#d6e1ee;font-size:.87rem}
+footer{font-size:.82rem;color:#afbfd4;margin-top:22px}ul{padding-left:21px;color:#c4d0e0;font-size:.88rem}li{margin-bottom:8px}
+@media(max-width:800px){.cols{grid-template-columns:1fr}header{display:block}}@media(max-width:520px){.formgrid{grid-template-columns:1fr}.wrap{padding:16px 12px 30px}.panel{padding:17px}}
+</style>
+</head>
+<body><main class="wrap">
+<header><div><div class="eyebrow">Antimicrobial susceptibility · Local computation</div><h1>EUCAST MIC breakpoint interpreter</h1><p>Interpret a reported MIC against <strong>manually verified</strong> breakpoint limits.</p></div></header>
+<div class="notice" role="note"><strong>Clinical safety:</strong> No breakpoint database is bundled. Confirm the organism, antimicrobial, infection site, dosing/route, table edition, footnotes, and applicable ATU in the <a href="https://www.eucast.org/bacteria/clinical-breakpoints-and-interpretation/clinical-breakpoint-tables/" target="_blank" rel="noopener noreferrer">official EUCAST tables</a>. This tool is not a substitute for a validated laboratory AST system.</div>
+<div class="cols" style="margin-top:18px">
+<section class="panel" aria-labelledby="input-title"><h2 id="input-title">Sample and breakpoint data</h2>
+<form id="mic-form" novalidate>
+<div class="formgrid"><div class="field"><label for="organism">Organism / taxon</label><input id="organism" maxlength="160" autocomplete="off" required placeholder="As specified in the EUCAST table"></div>
+<div class="field"><label for="antimicrobial">Antimicrobial</label><input id="antimicrobial" maxlength="160" autocomplete="off" required placeholder="Agent and formulation"></div></div>
+<div class="formgrid"><div class="field"><label for="mic">Reported MIC (mg/L)</label><input id="mic" required inputmode="decimal" placeholder="e.g. 2 or <=0.25"><span class="help">Accepts exact, &lt;, &lt;=, &gt;, &gt;= values.</span></div><div class="field"><label for="version">Breakpoint edition / source</label><input id="version" maxlength="160" required placeholder="e.g. EUCAST v16.1, table reviewed"></div></div>
+<div class="formgrid"><div class="field"><label for="s">S ≤ (mg/L)</label><input id="s" required inputmode="decimal" placeholder="Verified cutoff"></div><div class="field"><label for="r">R &gt; (mg/L)</label><input id="r" required inputmode="decimal" placeholder="Verified cutoff"></div></div>
+<h3>Optional Area of Technical Uncertainty (ATU)</h3>
+<div class="formgrid"><div class="field"><label for="atu-low">ATU lower bound (mg/L)</label><input id="atu-low" inputmode="decimal" placeholder="Optional"></div><div class="field"><label for="atu-high">ATU upper bound (mg/L)</label><input id="atu-high" inputmode="decimal" placeholder="Optional"></div></div>
+<p class="help">If the MIC interval overlaps the entered ATU range, classification is withheld for manual review.</p>
+<div class="actions"><button type="submit">Interpret MIC</button><button type="reset" class="secondary">Clear</button></div></form></section>
+<section class="panel" aria-labelledby="result-title"><h2 id="result-title">Interpretation</h2>
+<div id="result" class="state" role="status" aria-live="polite"><div class="note">Enter a reported MIC and verified S/R cutoffs to obtain a category.</div></div>
+<div class="actions"><button id="download" type="button" class="secondary" disabled>Download result (JSON)</button></div>
+<h3>Category definitions</h3><ul><li><strong>S</strong> — Susceptible, standard dosing regimen.</li><li><strong>I</strong> — Susceptible, increased exposure (not resistant).</li><li><strong>R</strong> — Resistant.</li><li><strong>ATU</strong> — Supplied technical uncertainty interval; review manually.</li><li><strong>UNDETERMINED</strong> — Reported MIC range spans categories.</li></ul></section>
+</div>
+<footer>Entire interpretation runs in this browser; form data are not submitted to a server. Only data entered in this session are used. No automatic breakpoint updates or clinical validation are provided. <a href="https://www.eucast.org/bacteria/clinical-breakpoints-and-interpretation/definition-of-s-i-and-r/" target="_blank" rel="noopener noreferrer">EUCAST S/I/R definitions</a>.</footer>
+</main>
+<script>
+'use strict';
+const form = document.getElementById('mic-form');
+const result = document.getElementById('result');
+const download = document.getElementById('download');
+let lastResult = null;
+const value = id => document.getElementById(id).value.trim();
+function decimal(raw, name) {
+  if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw)) throw Error(name + ' must be a nonnegative finite decimal number.');
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) throw Error(name + ' must be a finite nonnegative number.');
+  return n;
+}
+function interpret(input) {
+  for (const key of ['organism','antimicrobial','breakpoint_version']) {
+    if (typeof input[key] !== 'string' || !input[key].trim() || input[key].length > 160) throw Error(key.replaceAll('_',' ') + ' is required (max 160 characters).');
+  }
+  const s = decimal(input.s_le, 'S cutoff'), r = decimal(input.r_gt, 'R cutoff');
+  if (s > r) throw Error('S cutoff must not exceed R cutoff.');
+  const match = /^(<=|>=|<|>)?\s*(\d+(?:\.\d+)?|\.\d+)$/.exec(input.mic.replace(/^\s+|\s+$/g, ''));
+  if (!match) throw Error('MIC must be a number or qualified value such as <=0.25 or >8.');
+  const amount = decimal(match[2], 'MIC');
+  if (amount <= 0) throw Error('MIC must be greater than zero.');
+  let lo=null,hi=null,loInc=false,hiInc=false;
+  const op=match[1] || '=';
+  if (op==='=') {lo=amount;hi=amount;loInc=hiInc=true;}
+  if (op==='<') {hi=amount;}
+  if (op==='<=') {hi=amount;hiInc=true;}
+  if (op==='>') {lo=amount;}
+  if (op==='>=') {lo=amount;loInc=true;}
+  const aRaw=input.atu_low, bRaw=input.atu_high;
+  if (!!aRaw !== !!bRaw) throw Error('Supply both ATU bounds or neither.');
+  let classification='UNDETERMINED',reason='Reported MIC interval crosses a category boundary.';
+  if (aRaw && bRaw) {
+    const a=decimal(aRaw,'ATU lower'),b=decimal(bRaw,'ATU upper');
+    if(a>b)throw Error('ATU lower bound must not exceed upper bound.');
+    const below=hi!==null && (hi<a || (hi===a && !hiInc));
+    const above=lo!==null && (lo>b || (lo===b && !loInc));
+    if(!below && !above){classification='ATU';reason='MIC interval overlaps the specified ATU; manual review required.';}
+  }
+  if(classification!=='ATU'){
+    if(hi!==null && hi<=s){classification='S';reason='Within the supplied S threshold (standard dosing regimen).';}
+    else if(lo!==null && (lo>r || (lo===r && !loInc))){classification='R';reason='Exceeds the supplied R threshold.';}
+    else if(lo!==null && (lo>s || (lo===s && !loInc)) && hi!==null && hi<=r){classification='I';reason='Between the supplied cutoffs (increased exposure).';}
+  }
+  return {...input,classification,reason};
+}
+function appendLine(label, data){const p=document.createElement('div');const title=document.createElement('strong');title.textContent=label+': ';p.append(title,document.createTextNode(String(data)));return p;}
+function show(data){result.replaceChildren();result.dataset.category=data.classification;
+  const headline=document.createElement('div');headline.className='category';headline.textContent=data.classification;
+  const info=document.createElement('p');info.textContent=data.reason;result.append(headline,info);
+  const meta=document.createElement('div');meta.className='meta';
+  meta.append(appendLine('Organism',data.organism),appendLine('Antimicrobial',data.antimicrobial),appendLine('MIC',data.mic+' mg/L'),appendLine('S ≤ / R >',data.s_le+' / '+data.r_gt+' mg/L'),appendLine('Table edition',data.breakpoint_version));
+  if(data.atu_low)meta.append(appendLine('ATU',data.atu_low+'–'+data.atu_high+' mg/L'));
+  result.append(meta);
+}
+form.addEventListener('submit', event=>{event.preventDefault();const input={organism:value('organism'),antimicrobial:value('antimicrobial'),mic:value('mic'),s_le:value('s'),r_gt:value('r'),breakpoint_version:value('version'),atu_low:value('atu-low'),atu_high:value('atu-high')};
+  try{lastResult=interpret(input);show(lastResult);download.disabled=false;}
+  catch(err){lastResult=null;download.disabled=true;result.replaceChildren();result.removeAttribute('data-category');const p=document.createElement('p');p.textContent=err.message;result.append(p);}
+});
+form.addEventListener('reset',()=>{lastResult=null;download.disabled=true;result.removeAttribute('data-category');result.textContent='Enter a reported MIC and verified S/R cutoffs to obtain a category.';});
+download.addEventListener('click',()=>{if(!lastResult)return;const blob=new Blob([JSON.stringify(lastResult,null,2)+'\n'],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='mic-interpretation.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
+</script>
+</body></html>
