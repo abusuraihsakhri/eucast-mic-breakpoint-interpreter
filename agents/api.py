@@ -14,7 +14,7 @@ supervisor = SystemSupervisor(model_provider="mock")
 app = FastAPI(
     title="Eucast Mic Breakpoint Interpreter API",
     description="EUCAST MIC evaluation with explicit breakpoints; auxiliary nonclinical audit prototype",
-    version="3.0.1",
+    version="3.1.0",
 )
 
 
@@ -43,7 +43,7 @@ def api_interpret(payload: MICRequest):
 
 @app.get("/health")
 def health():
-    return {"status": "HEALTHY", "service": "eucast-mic-breakpoint-interpreter", "domain": "MIC interpretation and auxiliary audit", "version": "3.0.1"}
+    return {"status": "HEALTHY", "service": "eucast-mic-breakpoint-interpreter", "domain": "MIC interpretation and auxiliary audit", "version": "3.1.0"}
 
 
 @app.get("/metrics")
