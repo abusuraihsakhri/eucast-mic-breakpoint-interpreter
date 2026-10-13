@@ -36,6 +36,9 @@ test = [
 [project.scripts]
 eucast-interpreter = "cli:main"
 
+[tool.setuptools]
+py-modules = ["cli", "eucast_interpreter", "enrichment", "simulator"]
+
 [tool.setuptools.packages.find]
 include = ["agents*"]
 
