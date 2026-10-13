@@ -1,5 +1,7 @@
 # EUCAST MIC Breakpoint Interpreter
 
+### [Open the Live Application →](https://abusuraihsakhri.github.io/eucast-mic-breakpoint-interpreter/)
+
 A local MIC categorisation utility for microbiology education, laboratory review, and development testing. It compares a reported MIC (mg/L) with **user-supplied, verified** EUCAST susceptible (S ≤) and resistant (R >) cutoffs. No official breakpoint table is embedded or downloaded.
 
 **Clinical limitation:** This is not a validated diagnostic device or a substitute for laboratory interpretation. Check the organism identification, antimicrobial, infection site, exposure/dosing regimen, special instructions, notes, testing method, ATU, and current breakpoint edition before relying on a result. Never use example thresholds as clinical breakpoints.
