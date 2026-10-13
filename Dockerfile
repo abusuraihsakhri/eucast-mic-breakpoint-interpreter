@@ -9,8 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
-RUN pip install --no-cache-dir -e ".[test]"
+COPY pyproject.toml README.md ./
+COPY agents/ ./agents/
+COPY cli.py eucast_interpreter.py enrichment.py simulator.py ./
+RUN pip install --no-cache-dir .
 
 COPY . .
 
