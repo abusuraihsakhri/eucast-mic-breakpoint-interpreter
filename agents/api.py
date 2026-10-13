@@ -4,6 +4,7 @@ FastAPI REST API Server for Eucast Mic Breakpoint Interpreter.
 from typing import Dict, Any, List
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from eucast_interpreter import interpret_mic
 from .base import AuditLogger, PHIGuard
 from .models import SystemTaskPayload, ConsensusDossier
 from .supervisor import SystemSupervisor
@@ -19,6 +20,25 @@ app = FastAPI(
 
 class ChatRequest(BaseModel):
     query: str
+
+
+class MICRequest(BaseModel):
+    organism: str
+    antimicrobial: str
+    mic: str
+    s_le: str
+    r_gt: str
+    breakpoint_version: str
+    atu_low: str | None = None
+    atu_high: str | None = None
+
+
+@app.post("/api/interpret")
+def api_interpret(payload: MICRequest):
+    try:
+        return interpret_mic(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/health")
