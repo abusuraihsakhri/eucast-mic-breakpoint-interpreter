@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Eucast Mic Breakpoint Interpreter API",
-    "description": "Enterprise Distributed Component Platform (Clinical & Cryptographic AI) adhering to CAP / CLSI / NIST Standards.",
-    "version": "3.0.0-ENTERPRISE",
+    "description": "MIC categorisation requires user-verified EUCAST thresholds. Auxiliary audit endpoints are not clinical AST interpretations.",
+    "version": "3.0.1",
     "contact": {
       "name": "Dr. Abu Suraih Sakhri",
       "url": "https://github.com/abusuraihsakhri"
@@ -25,14 +25,14 @@
         "summary": "Prometheus operational metrics",
         "responses": {
           "200": {
-            "description": "Prometheus text metrics"
+            "description": "JSON counters and prototype system status"
           }
         }
       }
     },
     "/api/audit": {
       "post": {
-        "summary": "Dispatch task payload across specialized workers",
+        "summary": "Generic auxiliary threshold audit (not an EUCAST interpretation)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -76,7 +76,7 @@
     },
     "/api/chat": {
       "post": {
-        "summary": "Air-gapped supervisory conversational assistant",
+        "summary": "Deterministic mock response (no clinical verification)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -107,6 +107,64 @@
         "responses": {
           "200": {
             "description": "Cryptographic audit trail"
+          }
+        }
+      }
+    },
+    "/api/interpret": {
+      "post": {
+        "summary": "Interpret MIC using caller-supplied S/R breakpoints",
+        "description": "No clinical breakpoint database is bundled. Result may be S, I, R, ATU, or UNDETERMINED.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "organism": {
+                    "type": "string"
+                  },
+                  "antimicrobial": {
+                    "type": "string"
+                  },
+                  "mic": {
+                    "type": "string"
+                  },
+                  "s_le": {
+                    "type": "string"
+                  },
+                  "r_gt": {
+                    "type": "string"
+                  },
+                  "breakpoint_version": {
+                    "type": "string"
+                  },
+                  "atu_low": {
+                    "type": "string"
+                  },
+                  "atu_high": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "organism",
+                  "antimicrobial",
+                  "mic",
+                  "s_le",
+                  "r_gt",
+                  "breakpoint_version"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Categorisation and explanatory reason"
+          },
+          "422": {
+            "description": "Invalid breakpoint or MIC input"
           }
         }
       }
