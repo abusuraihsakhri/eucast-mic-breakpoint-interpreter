@@ -8,6 +8,7 @@ import sys
 from agents.models import SystemTaskPayload
 from agents.supervisor import SystemSupervisor
 from agents.base import AuditLogger
+from eucast_interpreter import main as mic_main, FIELDS as MIC_FIELDS, OPTIONAL as MIC_OPTIONAL
 
 supervisor = SystemSupervisor(model_provider="mock")
 
@@ -42,7 +43,27 @@ def main(argv=None):
     p_serve.add_argument("--host", default="127.0.0.1")
     p_serve.add_argument("--port", type=int, default=8000)
 
+    # Dedicated clinically constrained MIC commands. Legacy audit commands remain separate.
+    p_mic = subparsers.add_parser("mic", help="Interpret one MIC using verified breakpoint inputs")
+    for name in MIC_FIELDS:
+        p_mic.add_argument("--" + name.replace("_", "-"), required=True)
+    for name in MIC_OPTIONAL:
+        p_mic.add_argument("--" + name.replace("_", "-"))
+    p_mic_batch = subparsers.add_parser("mic-batch", help="Interpret MIC CSV")
+    p_mic_batch.add_argument("-i", "--input", required=True)
+    p_mic_batch.add_argument("-o", "--output", default="results.csv")
+
     args = parser.parse_args(argv)
+
+    if args.command in ("mic", "mic-batch"):
+        if args.command == "mic-batch":
+            return mic_main(["batch", "-i", args.input, "-o", args.output])
+        mic_args = ["single"]
+        for name in MIC_FIELDS + MIC_OPTIONAL:
+            value = getattr(args, name)
+            if value is not None:
+                mic_args.extend(["--" + name.replace("_", "-"), value])
+        return mic_main(mic_args)
 
     if args.command == "audit":
         payload = SystemTaskPayload(
